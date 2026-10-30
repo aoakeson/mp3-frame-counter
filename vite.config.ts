@@ -12,7 +12,19 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./web", import.meta.url)) },
   },
-  build: { outDir: "../dist", emptyOutDir: true },
+  build: {
+    outDir: "../dist",
+    emptyOutDir: true,
+    // Two pages: the upload page and How it works.
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./web/index.html", import.meta.url)),
+        how: fileURLToPath(
+          new URL("./web/how-it-works/index.html", import.meta.url),
+        ),
+      },
+    },
+  },
   // `npm run dev:web` serves the page with hot reload and forwards API calls to `npm run dev`.
   server: { proxy: { "/file-upload": "http://localhost:3000" } },
 });

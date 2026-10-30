@@ -35,7 +35,7 @@ curl -F "file=@samples/sample.mp3" http://localhost:3000/file-upload
 
 On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` there is an alias for a different command.
 
-Or open http://localhost:3000 in a browser, click **Try the sample**, and open any step to see the code that ran.
+Or open http://localhost:3000 in a browser, click **Try the sample**, and open any step to see an animation of it and the code that ran.
 
 ## API
 
@@ -92,7 +92,13 @@ Each step names the function that did the work. The page shows that function's s
 
 The upload page.
 
+### `GET /how-it-works/`
+
+A plain-language explanation of the whole project, with an animated picture for each idea and a glossary.
+
 ## How counting works
+
+For a gentler, illustrated version of this section, open `/how-it-works/` in the running app.
 
 All of it is in [src/mp3.ts](src/mp3.ts), which imports nothing.
 
