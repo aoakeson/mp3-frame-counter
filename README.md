@@ -89,6 +89,8 @@ Without it, or with any other value such as `?trace=false`, the response is exac
 Each step names the function that did the work. The page shows that function's source, bundled from the same files the server runs.
 Most steps also carry a `picture`: the real numbers behind that step's animation on the page, such as the ID3 tag's size or the first frame's bitrate and length.
 
+When the file has an ID3v2.3 or v2.4 tag with song details, the response also has a `song` object: `title`, `artist`, `album`, `year`, `genre`, `track` and `cover`, each only when present. `cover` is the front cover as a `data:` URL. Tags over 5 MB are not read. The details are read from the tag's bytes as they stream past, so the count is unaffected, and nothing is stored. The code is in [src/tags.ts](src/tags.ts).
+
 ### `GET /`
 
 The upload page.

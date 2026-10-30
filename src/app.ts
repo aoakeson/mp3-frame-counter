@@ -37,7 +37,9 @@ app.post("/file-upload", async (c) => {
   if (!trace) return c.json(body, status);
 
   const steps = trace.steps(upload.via, status, performance.now() - started);
-  return c.json({ ...body, trace: steps }, status);
+  // The song's details, when the ID3 tag has any. Only with ?trace.
+  const song = trace.song();
+  return c.json({ ...body, ...(song && { song }), trace: steps }, status);
 });
 
 // Hono does not send 405 on its own. Registered after .post, so only other methods land here.

@@ -44,7 +44,7 @@ function draw(p: Picture): ReactNode {
     case "upload":
       return <Upload bytes={p.bytes} />;
     case "id3":
-      return <SkipTag bytes={p.bytes} />;
+      return <SkipTag bytes={p.bytes} found={p.found} />;
     case "skip":
       return <SkipJunk bytes={p.bytes} />;
     case "header":
@@ -125,7 +125,19 @@ export function Upload({ bytes }: { bytes?: number }) {
 }
 
 /** The reader reads the ID3 tag's size and jumps over the whole tag. */
-export function SkipTag({ bytes = 44 }: { bytes?: number }) {
+export function SkipTag({
+  bytes = 44,
+  found = ["title", "artist", "cover art"],
+}: {
+  bytes?: number;
+  /** The song details the tag holds. */
+  found?: string[];
+}) {
+  // Three fit on the block; the rest are summed up.
+  const listed =
+    found.length > 3
+      ? [...found.slice(0, 2), `${found.length - 2} more`]
+      : found;
   const y = 46;
   return (
     <Scene
@@ -144,7 +156,7 @@ export function SkipTag({ bytes = 44 }: { bytes?: number }) {
         ID3 tag · {num(bytes)} bytes
       </text>
       <text x={70} y={y + 20} {...onBlock} fontSize={6.5}>
-        title · artist · cover art
+        {listed.length > 0 ? listed.join(" · ") : "no song details"}
       </text>
       <Frame x={130} y={y} w={80} h={26} />
       <Frame x={210} y={y} w={100} h={26} />

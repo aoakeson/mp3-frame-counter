@@ -4,6 +4,7 @@ import {
   FileAudioIcon,
   InfoIcon,
   type LucideIcon,
+  MusicIcon,
   ScanSearchIcon,
   SendIcon,
   SkipForwardIcon,
@@ -24,6 +25,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/components/ui/trace";
+import type { Song } from "../src/tags";
 import type { TraceStep } from "../src/trace";
 import { Code } from "./code";
 import { StepIllustration } from "./illustrations";
@@ -32,6 +34,7 @@ import { StepIllustration } from "./illustrations";
 interface Response {
   frameCount?: number;
   error?: string;
+  song?: Song;
   trace?: TraceStep[];
 }
 
@@ -205,6 +208,9 @@ function Result({ state }: { state: Exclude<State, { kind: "idle" }> }) {
     <Card className="py-6 transition-[opacity,translate] duration-300 starting:translate-y-1 starting:opacity-0">
       <CardContent className="flex flex-col gap-6 px-6">
         <Summary state={state} />
+        {state.kind === "done" && state.body.song && (
+          <SongCard song={state.body.song} />
+        )}
         {state.kind === "counting" && <Pending file={state.file} />}
         {state.kind === "done" && state.body.trace && (
           <section className="flex flex-col gap-3 border-t pt-5">
@@ -271,6 +277,46 @@ function Summary({ state }: { state: Exclude<State, { kind: "idle" }> }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The song's details from its ID3 tag, when it has any. */
+function SongCard({ song }: { song: Song }) {
+  const more = [
+    song.album,
+    song.year,
+    song.genre,
+    song.track && `track ${song.track}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <section
+      aria-label="Song details"
+      className="flex items-center gap-4 border-t pt-5"
+    >
+      {song.cover ? (
+        <img
+          src={song.cover}
+          alt={song.album ? `Cover art for ${song.album}` : "Cover art"}
+          className="size-20 shrink-0 rounded-md border object-cover"
+        />
+      ) : (
+        <div className="flex size-20 shrink-0 items-center justify-center rounded-md bg-muted">
+          <MusicIcon className="size-6 text-muted-foreground" aria-hidden />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate font-medium">{song.title ?? "Untitled"}</p>
+        {song.artist && <p className="truncate text-sm">{song.artist}</p>}
+        {more && (
+          <p className="truncate text-sm text-muted-foreground">{more}</p>
+        )}
+        <p className="mt-1 text-xs text-muted-foreground/70">
+          From the file's ID3 tag
+        </p>
+      </div>
+    </section>
   );
 }
 

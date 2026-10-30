@@ -4,6 +4,7 @@
  * upload page can show it. Nothing here affects the count itself.
  */
 import type { FrameEvent, FrameHeader } from "./mp3";
+import { readSong, type Song } from "./tags";
 
 export interface TraceStep {
   kind: "upload" | "id3" | "header" | "metadata" | "skip" | "frames" | "result";
@@ -19,7 +20,8 @@ export interface TraceStep {
 /** One per step kind. The page draws each step from these, so it shows this file. */
 export type Picture =
   | { kind: "upload"; bytes: number }
-  | { kind: "id3"; bytes: number }
+  /** `found` names the song details the tag holds, such as "title" or "cover art". */
+  | { kind: "id3"; bytes: number; found: string[] }
   | { kind: "skip"; bytes: number }
   | {
       kind: "header";
@@ -33,12 +35,18 @@ export type Picture =
   | { kind: "frames"; count: number; sizes: number[] }
   | { kind: "result"; frameCount: number };
 
+// Bigger tags (huge cover scans) are skipped without reading their details.
+const MAX_TAG_BYTES = 5 * 1024 * 1024;
+
 const MP3 = "src/mp3.ts";
 const APP = "src/app.ts";
 
 export class Trace {
   private bytes = 0;
   private id3?: { length: number; version: number };
+  private tag: Uint8Array[] = [];
+  private tagBytes = 0;
+  private parsedSong?: Song | null;
   private first?: { offset: number; header: FrameHeader };
   private metadata?: { tag: string; declaredFrames: number | null };
   private frames = 0;
@@ -55,6 +63,10 @@ export class Trace {
     switch (event.type) {
       case "id3":
         this.id3 = event;
+        break;
+      case "id3-data":
+        this.tagBytes += event.bytes.length;
+        if (this.tagBytes <= MAX_TAG_BYTES) this.tag.push(event.bytes);
         break;
       case "metadata":
         this.metadata = event;
@@ -95,12 +107,28 @@ export class Trace {
     ];
 
     if (this.id3) {
+      const song = this.song();
+      const found = song
+        ? (
+            [
+              "title",
+              "artist",
+              "album",
+              "year",
+              "genre",
+              "track",
+              "cover",
+            ] as const
+          )
+            .filter((key) => song[key])
+            .map((key) => (key === "cover" ? "cover art" : key))
+        : [];
       steps.push({
         kind: "id3",
         title: `Skipped an ID3v2.${this.id3.version} tag`,
-        detail: `${count(this.id3.length, "byte")} of metadata at the start, jumped over by its declared size.`,
+        detail: `${count(this.id3.length, "byte")} of metadata at the start${found.length > 0 ? ` (${found.join(", ")})` : ""}, jumped over by its declared size.`,
         code: { file: MP3, start: "function id3v2TagLength(" },
-        picture: { kind: "id3", bytes: this.id3.length },
+        picture: { kind: "id3", bytes: this.id3.length, found },
       });
     }
 
@@ -190,6 +218,19 @@ export class Trace {
     return steps;
   }
 
+  /** The song's details from the ID3 tag, read once the whole tag has gone by. */
+  song(): Song | null {
+    if (this.parsedSong === undefined) {
+      const complete = this.id3 && this.tagBytes === this.id3.length;
+      this.parsedSong =
+        complete && this.tagBytes <= MAX_TAG_BYTES
+          ? readSong(join(this.tag))
+          : null;
+      this.tag = []; // the bytes are no longer needed
+    }
+    return this.parsedSong;
+  }
+
   private bitrate(): string {
     return this.minKbps === this.maxKbps
       ? `Constant ${this.minKbps} kbps`
@@ -201,6 +242,16 @@ export class Trace {
     const seconds = Math.round((this.frames * 1152) / sampleRate);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
+}
+
+function join(parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
 }
 
 function count(n: number, noun: string): string {
