@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mp3-frame-counter",
+  "main": "src/app.ts",
+  "compatibility_date": "2026-10-01",
+  // Cloudflare serves public/ itself and only runs the Worker for paths with no matching file.
+  "assets": { "directory": "./public" },
+  "routes": [{ "pattern": "mp3.andrewoakeson.com", "custom_domain": true }],
+  "observability": { "enabled": true }
+}
