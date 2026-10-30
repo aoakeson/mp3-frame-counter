@@ -37,6 +37,8 @@ On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` there i
 
 Or open http://localhost:3000 in a browser, click **Try the sample**, and open any step to see an animation of it and the code that ran.
 
+The sidebar lists 20 more example MP3s: public domain recordings (U.S. military bands, Musopen, NASA) with public domain paintings as covers. Click one to count its frames or press play to listen. They cover CBR from 128 to 320 kbps, VBR, 44.1 and 48 kHz, ID3v1 and ID3v2 tags, and one MPEG-2 clip (_The Eagle Has Landed_) that shows the unsupported-format error. Sources and licenses are in [samples/library/CREDITS.md](samples/library/CREDITS.md).
+
 ## API
 
 ### `POST /file-upload`
@@ -175,9 +177,12 @@ src/                The API. Runs unchanged on Node and on Cloudflare Workers.
 web/                The upload page: React, Tailwind CSS and shadcn/ui components.
   app.tsx           The page.
   code.tsx          Shows the server function behind each trace step.
+  examples.tsx      The sidebar of example MP3s: play one, or click it to count it.
+  library.ts        The example tracks.
   components/ui/    shadcn/ui components (Trace, Button, Card, Spinner, Collapsible).
 samples/
   sample.mp3        The sample file provided with the assessment, also served by the page.
+  library/          The example MP3s and their covers, served at /library/. CREDITS.md lists sources.
 ```
 
 CI runs `npm run check`, `npm run build` and `npm test` on every pull request ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
