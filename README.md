@@ -11,14 +11,14 @@ curl -F "file=@samples/sample.mp3" https://mp3.andrewoakeson.com/file-upload
 
 ## Run it locally
 
-You need [Node.js](https://nodejs.org) 20 or newer. Nothing else: no accounts, no build step.
+You need [Node.js](https://nodejs.org) 20 or newer. Nothing else: no accounts, no global tools.
 
 ```bash
 npm install
 npm start
 ```
 
-The server prints `Listening on http://localhost:3000`.
+`npm start` builds the upload page, then the server prints `Listening on http://localhost:3000`.
 To use a different port, set `PORT` (`PORT=3001 npm start`, or in PowerShell `$env:PORT=3001; npm start`).
 
 ## Try it
@@ -35,7 +35,7 @@ curl -F "file=@samples/sample.mp3" http://localhost:3000/file-upload
 
 On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` there is an alias for a different command.
 
-Or open http://localhost:3000 in a browser and drop the file onto the page.
+Or open http://localhost:3000 in a browser, click **Try the sample**, and open any step to see the code that ran.
 
 ## API
 
@@ -65,9 +65,30 @@ Every response is JSON with `Content-Type: application/json`:
 | `404`  | `{"error": "Not found"}`                                    | Any other path                                               |
 | `500`  | `{"error": "Internal server error"}`                        | Unexpected failure; details go to the server log only        |
 
+### `POST /file-upload?trace`
+
+The same request with `?trace` also explains what happened, step by step. The upload page uses it.
+Without `?trace` the response is exactly `{"frameCount": n}`.
+
+```json
+{
+  "frameCount": 6089,
+  "trace": [
+    {
+      "kind": "id3",
+      "title": "Skipped an ID3v2.4 tag",
+      "detail": "44 bytes of metadata at the start, jumped over by its declared size.",
+      "code": { "file": "src/mp3.ts", "start": "function id3v2TagLength(" }
+    }
+  ]
+}
+```
+
+Each step names the function that did the work. The page shows that function's source, bundled from the same files the server runs.
+
 ### `GET /`
 
-A small upload page.
+The upload page.
 
 ## How counting works
 
@@ -106,32 +127,37 @@ mediainfo --Inform="Audio;%FrameCount%" samples/sample.mp3
 
 ## Development
 
-| Command          | What it does                                                             |
-| ---------------- | ------------------------------------------------------------------------ |
-| `npm start`      | Run the server                                                           |
-| `npm run dev`    | Run the server and restart on file changes                               |
-| `npm run check`  | Lint, format check ([Biome](https://biomejs.dev)) and type check (`tsc`) |
-| `npm run fix`    | Apply lint and format fixes                                              |
-| `npm test`       | Run tests ([Vitest](https://vitest.dev))                                 |
-| `npm run deploy` | Deploy to Cloudflare Workers                                             |
+| Command           | What it does                                                                    |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `npm start`       | Build the page and run the server                                               |
+| `npm run dev`     | Run the server and restart on file changes                                      |
+| `npm run dev:web` | Serve the page with hot reload on port 5173, calling the API from `npm run dev` |
+| `npm run build`   | Build the page into `dist/` ([Vite](https://vite.dev))                          |
+| `npm run check`   | Lint, format check ([Biome](https://biomejs.dev)) and type check (`tsc`)        |
+| `npm run fix`     | Apply lint and format fixes                                                     |
+| `npm test`        | Run tests ([Vitest](https://vitest.dev))                                        |
+| `npm run deploy`  | Build and deploy to Cloudflare Workers                                          |
 
 ```
-src/
-  app.ts      HTTP routes and error handling. Runs unchanged on Node and on Cloudflare Workers.
-  server.ts   Starts the app on Node for local use.
-  mp3.ts      The frame counter. No dependencies.
-public/
-  index.html  The upload page.
+src/                The API. Runs unchanged on Node and on Cloudflare Workers.
+  app.ts            HTTP routes and error handling.
+  mp3.ts            The frame counter. No dependencies.
+  trace.ts          Turns the counter's events into the steps shown by ?trace.
+  server.ts         Starts the app on Node for local use.
+web/                The upload page: React, Tailwind CSS and shadcn/ui components.
+  app.tsx           The page.
+  code.tsx          Shows the server function behind each trace step.
+  components/ui/    shadcn/ui components (Trace, Button, Card, Spinner, Collapsible).
 samples/
-  sample.mp3  The sample file provided with the assessment.
+  sample.mp3        The sample file provided with the assessment, also served by the page.
 ```
 
-CI runs `npm run check` and `npm test` on every pull request ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+CI runs `npm run check`, `npm run build` and `npm test` on every pull request ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Deployment
 
 The same `src/app.ts` runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/), configured in [wrangler.jsonc](wrangler.jsonc).
-Cloudflare serves `public/` directly, and every other request reaches the Worker.
+Cloudflare serves the built page in `dist/` directly, and every other request reaches the Worker.
 
 ```bash
 npx wrangler login
@@ -166,5 +192,5 @@ The Workers Free plan stops a request after 10 ms of CPU time with Cloudflare's 
 
 - **Tests.** Vitest is wired but there are no tests yet. First: a golden test that the sample counts 6089. Then header edge cases, the same file split into 1-byte chunks, and `app.request()` tests for every status code in the API table.
 - **Streaming multipart.** `formData()` buffers the whole upload. A streaming multipart parser would give form uploads the same flat memory use as raw bodies and remove the 100 MB cap.
-- **Cross-check the Xing count.** When the Xing header has a frame count, report a mismatch with the scanned count instead of silently trusting one.
+- **Cross-check the Xing count.** The trace already shows the frame count the Xing header declares. Flag it when that differs from the scanned count.
 - **More formats.** MPEG-2 and 2.5, Layers I and II, and free-format bitrate are out of scope and currently count as 0 frames.

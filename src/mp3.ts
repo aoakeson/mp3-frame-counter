@@ -25,21 +25,41 @@ const BITRATE_KBPS = [
 ] as const;
 const SAMPLE_RATE_HZ = [44100, 48000, 32000, 0] as const;
 
-interface FrameHeader {
+export interface FrameHeader {
   /** Bytes, header included. */
   readonly frameLength: number;
+  readonly bitrateKbps: number;
+  readonly sampleRate: number;
+  readonly mono: boolean;
   /** Bytes between the header and the audio data: 17 for mono, 32 otherwise. */
   readonly sideInfoLength: 17 | 32;
 }
 
+/** What the counter did, reported to an optional observer. Offsets are bytes from the start. */
+export type FrameEvent =
+  | { type: "id3"; offset: number; length: number; version: number }
+  | {
+      type: "metadata";
+      offset: number;
+      header: FrameHeader;
+      tag: "Xing" | "Info" | "VBRI";
+      declaredFrames: number | null;
+    }
+  | { type: "frame"; offset: number; header: FrameHeader }
+  | { type: "skip"; offset: number }
+  | { type: "end"; bytes: number };
+
 /**
  * Streams the input once and returns the number of audio frames.
  * Memory stays at one chunk plus at most one carried-over frame, whatever the file size.
+ * `onEvent` is optional and only used to explain the result (see trace.ts).
  */
 export async function countFrames(
   stream: ReadableStream<Uint8Array>,
+  onEvent?: (event: FrameEvent) => void,
 ): Promise<number> {
   let buffer: Uint8Array = new Uint8Array(0); // bytes not yet consumed
+  let consumed = 0; // bytes before buffer[0], so events can report absolute offsets
   let skip = 0; // bytes still to jump over: the rest of a frame or of the ID3 tag
   let count = 0;
   let checkedId3 = false;
@@ -70,6 +90,15 @@ export async function countFrames(
         if (remaining < ID3_HEADER_SIZE && !final) break;
         checkedId3 = true;
         skip = id3v2TagLength(view, pos);
+        if (skip > 0) {
+          const version = view.getUint8(pos + 3);
+          onEvent?.({
+            type: "id3",
+            offset: consumed + pos,
+            length: skip,
+            version,
+          });
+        }
         continue;
       }
 
@@ -92,6 +121,7 @@ export async function countFrames(
       }
 
       if (header === null) {
+        onEvent?.({ type: "skip", offset: consumed + pos });
         pos++; // not a frame here: resync one byte forward
         synced = false;
         continue;
@@ -101,16 +131,25 @@ export async function countFrames(
       if (!checkedFirstFrame) {
         if (remaining < FIRST_FRAME_PEEK && !final) break;
         checkedFirstFrame = true;
-        if (isInfoFrame(view, pos, header)) {
+        const metadata = readMetadataTag(view, pos, header);
+        if (metadata !== null) {
+          onEvent?.({
+            type: "metadata",
+            offset: consumed + pos,
+            header,
+            ...metadata,
+          });
           skip = header.frameLength;
           continue;
         }
       }
 
+      onEvent?.({ type: "frame", offset: consumed + pos, header });
       count++;
       skip = header.frameLength;
     }
 
+    consumed += pos;
     buffer = buffer.subarray(pos);
   }
 
@@ -120,6 +159,7 @@ export async function countFrames(
   }
   drain(true);
 
+  onEvent?.({ type: "end", bytes: consumed + buffer.length });
   return count;
 }
 
@@ -151,7 +191,13 @@ function parseFrameHeader(h: number): FrameHeader | null {
   const frameLength =
     Math.floor((144 * bitrateKbps * 1000) / sampleRate) + padding;
 
-  return { frameLength, sideInfoLength: mono ? 17 : 32 };
+  return {
+    frameLength,
+    bitrateKbps,
+    sampleRate,
+    mono,
+    sideInfoLength: mono ? 17 : 32,
+  };
 }
 
 /** Length of an ID3v2 tag at `pos`, or 0 if there is none. */
@@ -175,18 +221,38 @@ function id3v2TagLength(view: DataView, pos: number): number {
 }
 
 /**
- * True when the frame at `pos` is a Xing, Info or VBRI metadata frame. Xing and Info
- * (LAME) follow the side info; VBRI (Fraunhofer) sits at a fixed 36 bytes.
+ * Detects a Xing, Info or VBRI metadata frame at `pos`, and the number of audio frames
+ * it says follow. Xing and Info (LAME) follow the side info; VBRI (Fraunhofer) sits at
+ * a fixed 36 bytes.
  */
-function isInfoFrame(
+function readMetadataTag(
   view: DataView,
   pos: number,
   header: FrameHeader,
-): boolean {
-  const xing = ascii(view, pos + FRAME_HEADER_SIZE + header.sideInfoLength, 4);
-  return (
-    xing === "Xing" || xing === "Info" || ascii(view, pos + 36, 4) === "VBRI"
-  );
+): { tag: "Xing" | "Info" | "VBRI"; declaredFrames: number | null } | null {
+  const xingPos = pos + FRAME_HEADER_SIZE + header.sideInfoLength;
+  const xing = ascii(view, xingPos, 4);
+  if (xing === "Xing" || xing === "Info") {
+    // Flag bit 0 says a 4-byte frame count follows the 4-byte flags.
+    const hasCount =
+      xingPos + 12 <= view.byteLength &&
+      (view.getUint32(xingPos + 4) & 1) === 1;
+    return {
+      tag: xing,
+      declaredFrames: hasCount ? view.getUint32(xingPos + 8) : null,
+    };
+  }
+
+  const vbriPos = pos + 36;
+  if (ascii(view, vbriPos, 4) === "VBRI") {
+    const hasCount = vbriPos + 18 <= view.byteLength;
+    return {
+      tag: "VBRI",
+      declaredFrames: hasCount ? view.getUint32(vbriPos + 14) : null,
+    };
+  }
+
+  return null;
 }
 
 /** Reads `length` ASCII characters, or "" when they run past the end. */

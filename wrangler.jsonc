@@ -3,8 +3,8 @@
   "name": "mp3-frame-counter",
   "main": "src/app.ts",
   "compatibility_date": "2026-10-01",
-  // Cloudflare serves public/ itself and only runs the Worker for paths with no matching file.
-  "assets": { "directory": "./public" },
+  // Cloudflare serves the built page in dist/ itself and only runs the Worker for paths with no matching file.
+  "assets": { "directory": "./dist" },
   "routes": [{ "pattern": "mp3.andrewoakeson.com", "custom_domain": true }],
   "observability": { "enabled": true }
 }
