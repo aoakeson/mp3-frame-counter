@@ -33,14 +33,15 @@ app.post("/file-upload", async (c) => {
     trace?.record(event);
     mapper?.record(event);
   });
+  const ms = performance.now() - started;
 
   // Zero frames almost always means the file is not an MP3. Saying so beats answering 0.
   const status = frameCount > 0 ? 200 : 400;
   const body = frameCount > 0 ? { frameCount } : { error: NOT_MP3 };
-  const frames = frameCount > 0 ? mapper?.result() : undefined;
+  const frames = frameCount > 0 ? mapper?.result(ms) : undefined;
   if (!trace) return c.json({ ...body, ...(frames && { frames }) }, status);
 
-  const steps = trace.steps(upload.via, status, performance.now() - started);
+  const steps = trace.steps(upload.via, status, ms);
   // The song's details, when the ID3 tag has any. Only with ?trace.
   const song = trace.song();
   return c.json(

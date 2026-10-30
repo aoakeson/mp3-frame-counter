@@ -107,12 +107,13 @@ When the file has an ID3v2.3 or v2.4 tag with song details, the response also ha
     "sampleRate": 48000,
     "offsets": [1328, 2000, 2480],
     "sizes": [672, 480, 480],
-    "bitratesKbps": [224, 160, 160]
+    "bitratesKbps": [224, 160, 160],
+    "ms": 9
   }
 }
 ```
 
-`offsets` are bytes from the start of the file. Frame `i` plays from `i × samplesPerFrame / sampleRate` seconds. The code is in [src/frames.ts](src/frames.ts).
+`offsets` are bytes from the start of the file, and `ms` is how long the server spent reading and counting it. Frame `i` plays from `i × samplesPerFrame / sampleRate` seconds. The code is in [src/frames.ts](src/frames.ts).
 
 ### `GET /`
 

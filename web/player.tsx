@@ -91,8 +91,6 @@ export function PlayerBar({ player }: { player: Player }) {
   );
 }
 
-type Loaded = FrameMap & { ms: number };
-
 /**
  * Every frame of the song as a bar on a moving tape. Each frame is the same
  * 1152 samples of sound, so the bars are equally wide; their height is how many
@@ -100,7 +98,7 @@ type Loaded = FrameMap & { ms: number };
  * decodes audio), and the playback clock says which one is being heard.
  */
 function FrameTape({ track, player }: { track: Track; player: Player }) {
-  const [map, setMap] = useState<Loaded | "loading" | "failed">("loading");
+  const [map, setMap] = useState<FrameMap | "loading" | "failed">("loading");
   const [current, setCurrent] = useState(0);
   const tape = useRef<HTMLCanvasElement>(null);
   const overview = useRef<HTMLCanvasElement>(null);
@@ -197,7 +195,7 @@ function FrameTape({ track, player }: { track: Track; player: Player }) {
 
   const n = map.sizes.length;
   const frameMs = (map.samplesPerFrame / map.sampleRate) * 1000;
-  const realTime = (n * frameMs) / map.ms;
+  const realTime = (n * frameMs) / Math.max(map.ms, 1);
   // Constant bitrate frames differ by at most the one padding byte.
   const smallest = map.sizes.reduce((a, b) => Math.min(a, b), Infinity);
   const largest = map.sizes.reduce((a, b) => Math.max(a, b), 0);
@@ -230,7 +228,8 @@ function FrameTape({ track, player }: { track: Track; player: Player }) {
           bytes · {map.bitratesKbps[current]} kbps
         </span>
         <span>
-          server mapped every frame in {Math.round(map.ms)} ms,{" "}
+          server mapped every frame in{" "}
+          {map.ms < 1 ? "under 1" : Math.round(map.ms)} ms,{" "}
           {Math.round(realTime).toLocaleString()}× faster than playing them
         </span>
       </div>
@@ -245,21 +244,20 @@ function FrameTape({ track, player }: { track: Track; player: Player }) {
   );
 }
 
-/** Asks the server for the frame map once per track, with the time it took. */
-const requests = new Map<string, Promise<Loaded>>();
-function loadFrames(slug: string): Promise<Loaded> {
+/** Asks the server for the frame map, once per track. */
+const requests = new Map<string, Promise<FrameMap>>();
+function loadFrames(slug: string): Promise<FrameMap> {
   let request = requests.get(slug);
   if (!request) {
     request = (async () => {
       const file = await (await fetch(`/library/${slug}.mp3`)).blob();
-      const started = performance.now();
       const res = await fetch("/file-upload?frames", {
         method: "POST",
         body: file,
       });
       const body: { frames?: FrameMap } = await res.json();
       if (!res.ok || !body.frames) throw new Error("No frames");
-      return { ...body.frames, ms: performance.now() - started };
+      return body.frames;
     })();
     request.catch(() => requests.delete(slug));
     requests.set(slug, request);
