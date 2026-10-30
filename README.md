@@ -41,6 +41,14 @@ The sidebar lists 20 more example MP3s: public domain recordings (U.S. military 
 
 While a track plays, a bar along the bottom draws its frames as a moving tape. Every frame is the same 1,152 samples (about 26 ms), so the bars are equally wide; each bar's height is the bytes the encoder spent on that frame. Constant bitrate files make a flat wall, variable bitrate files a skyline that dips in quiet passages. The server finds every frame with `?frames` (it never decodes audio, and maps a whole song in tens of milliseconds); the browser's playback clock picks the frame being heard, `time × sampleRate / 1152`. A strip of the whole song underneath seeks when clicked.
 
+## Run the tests
+
+```bash
+npm test
+```
+
+14 tests, under a second. [src/mp3.test.ts](src/mp3.test.ts) checks the counter against ffprobe's counts for three files (VBR with ID3v2, 128 kbps CBR, 320 kbps CBR with ID3v1), the same bytes split into 1- and 3-byte chunks, junk around the audio, and files that must count 0 (not an MP3, MPEG-2, empty). [src/app.test.ts](src/app.test.ts) checks the API: multipart and raw uploads, and the `400`, `404` and `405` responses.
+
 ## API
 
 ### `POST /file-upload`
@@ -175,6 +183,8 @@ The counter was compared against ffprobe and against each file's own Xing/Info/V
 
 Every one of the 148 files with an encoder frame count matched it exactly.
 A 1 GB upload streamed through with the server's memory flat at about 75 MB.
+That comparison was a one-off run. The essential cases from it are kept as `npm test`, which CI runs on every pull request.
+
 An MP3 stored inside a Matroska (`.mkv`) container counts 0. That is a container, not an MP3 file: it puts a small header between frames, so no two frame headers line up.
 
 ## Development
@@ -196,17 +206,22 @@ src/                The API. Runs unchanged on Node and on Cloudflare Workers.
   mp3.ts            The frame counter. No dependencies.
   trace.ts          Turns the counter's events into the steps shown by ?trace.
   frames.ts         Collects every frame's offset, size and bitrate for ?frames.
+  tags.ts           Reads title, artist, album and cover art from the ID3v2 tag.
   server.ts         Starts the app on Node for local use.
+  *.test.ts         Tests for the counter (mp3.test.ts) and the API (app.test.ts).
 web/                The upload page: React, Tailwind CSS and shadcn/ui components.
   app.tsx           The page.
   code.tsx          Shows the server function behind each trace step.
   examples.tsx      The sidebar of example MP3s: play one, or click it to count it.
   library.ts        The example tracks.
   player.tsx        The player bar and its frame tape, synced to playback.
+  how-it-works.tsx  The How it works page, with illustrations.tsx for its pictures.
   components/ui/    shadcn/ui components (Trace, Button, Card, Spinner, Collapsible).
 samples/
   sample.mp3        The sample file provided with the assessment, also served by the page.
   library/          The example MP3s and their covers, served at /library/. CREDITS.md lists sources.
+okf/                Project knowledge in Open Knowledge Format, for people and AI agents.
+AGENTS.md           Instructions for AI coding agents working in this repository.
 ```
 
 CI runs `npm run check`, `npm run build` and `npm test` on every pull request ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
@@ -247,7 +262,8 @@ The Workers Free plan stops a request after 10 ms of CPU time with Cloudflare's 
 
 ## With more time
 
-- **Tests.** Vitest is wired but there are no tests yet. First: a golden test that the sample counts 6089. Then header edge cases, the same file split into 1-byte chunks, and `app.request()` tests for every status code in the API table.
+- **Very small chunks.** Counting slows sharply when the upload arrives in chunks of a few bytes: the sample takes 5 ms in 4 KB chunks but about 6 s in 13-byte chunks. Real uploads arrive in chunks of kilobytes, so this does not show in practice, but carrying over less of the buffer per chunk would remove it.
+- **More tests.** The `411` and `413` responses, `?trace` and `?frames`, and the ID3 tag reader.
 - **Streaming multipart.** `formData()` buffers the whole upload. A streaming multipart parser would give form uploads the same flat memory use as raw bodies and remove the 100 MB cap.
 - **Cross-check the Xing count.** The trace already shows the frame count the Xing header declares. Flag it when that differs from the scanned count.
 - **More formats.** MPEG-2 and 2.5, Layers I and II, and free-format bitrate are out of scope and currently count as 0 frames.
