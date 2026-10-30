@@ -29,6 +29,8 @@ curl -F "file=@samples/sample.mp3" http://localhost:3000/file-upload
 
 On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` there is an alias for a different command.
 
+Or open http://localhost:3000 in a browser and drop the file onto the page.
+
 ## API
 
 ### `POST /file-upload`
