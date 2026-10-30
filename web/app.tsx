@@ -10,7 +10,7 @@ import {
   TagIcon,
   UploadIcon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/trace";
 import type { TraceStep } from "../src/trace";
 import { Code } from "./code";
+import { Examples } from "./examples";
 import { StepIllustration } from "./illustrations";
 
 /** The JSON from `POST /file-upload?trace`: a count or an error, plus the steps. */
@@ -53,6 +54,14 @@ const ICONS: Record<TraceStep["kind"], LucideIcon> = {
 
 export function App() {
   const [state, setState] = useState<State>({ kind: "idle" });
+  const result = useRef<HTMLDivElement>(null);
+
+  // On narrow screens the examples sit below the result, so bring the result into view.
+  useEffect(() => {
+    if (state.kind === "counting") {
+      result.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [state.kind]);
 
   async function count(file: File) {
     setState({ kind: "counting", file });
@@ -78,46 +87,65 @@ export function App() {
     }
   }
 
-  async function countSample() {
+  /** Counts a file this site serves: the sample or one of the examples. */
+  async function countUrl(url: string, name: string) {
     try {
-      const res = await fetch("/sample.mp3");
+      const res = await fetch(url);
       if (!res.ok) throw new Error();
-      count(new File([await res.blob()], "sample.mp3", { type: "audio/mpeg" }));
+      count(new File([await res.blob()], name, { type: "audio/mpeg" }));
     } catch {
-      setState({ kind: "failed", message: "Could not load the sample file." });
+      setState({ kind: "failed", message: `Could not load ${name}.` });
     }
   }
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-4 py-12 sm:py-20">
-      <header className="flex flex-col gap-3">
-        <nav className="flex items-center justify-between gap-4 text-sm font-medium text-muted-foreground">
-          <p className="flex items-center gap-2">
-            <AudioLinesIcon className="size-4" aria-hidden />
-            MP3 Frame Counter
+    // One column on small screens (examples below the result); a sidebar from lg up.
+    <div className="mx-auto grid min-h-svh max-w-6xl grid-rows-[1fr_auto] gap-x-12 gap-y-8 px-4 py-12 sm:py-20 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <main className="flex flex-col gap-8">
+        <header className="flex flex-col gap-3">
+          <nav className="flex items-center justify-between gap-4 text-sm font-medium text-muted-foreground">
+            <p className="flex items-center gap-2">
+              <AudioLinesIcon className="size-4" aria-hidden />
+              MP3 Frame Counter
+            </p>
+            <a href="/how-it-works/" className="hover:text-foreground">
+              How it works →
+            </a>
+          </nav>
+          <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+            How many frames are in your MP3?
+          </h1>
+          <p className="text-pretty text-muted-foreground">
+            Upload a file to count its audio frames. Then open any step to see
+            what happened and the exact code that ran on the server.
           </p>
-          <a href="/how-it-works/" className="hover:text-foreground">
-            How it works →
-          </a>
-        </nav>
-        <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          How many frames are in your MP3?
-        </h1>
-        <p className="text-pretty text-muted-foreground">
-          Upload a file to count its audio frames. Then open any step to see
-          what happened and the exact code that ran on the server.
-        </p>
-      </header>
+        </header>
 
-      <DropZone
-        busy={state.kind === "counting"}
-        onFile={count}
-        onSample={countSample}
-      />
+        <DropZone
+          busy={state.kind === "counting"}
+          onFile={count}
+          onSample={() => countUrl("/sample.mp3", "sample.mp3")}
+        />
 
-      {state.kind !== "idle" && <Result state={state} />}
+        {state.kind !== "idle" && (
+          <div ref={result} className="scroll-mt-4">
+            <Result state={state} />
+          </div>
+        )}
+      </main>
 
-      <footer className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <aside className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <div className="lg:sticky lg:top-8 lg:-mr-2 lg:max-h-[calc(100svh-4rem)] lg:overflow-y-auto lg:pr-2">
+          <Examples
+            busy={state.kind === "counting"}
+            onAnalyze={(track) =>
+              countUrl(`/library/${track.slug}.mp3`, `${track.slug}.mp3`)
+            }
+          />
+        </div>
+      </aside>
+
+      <footer className=" flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
         <code className="font-mono">
           curl -F file=@song.mp3 {window.location.origin}/file-upload
         </code>
@@ -128,7 +156,7 @@ export function App() {
           Source on GitHub
         </a>
       </footer>
-    </main>
+    </div>
   );
 }
 
