@@ -39,6 +39,8 @@ Or open http://localhost:3000 in a browser, click **Try the sample**, and open a
 
 The sidebar lists 20 more example MP3s: public domain recordings (U.S. military bands, Musopen, NASA) with public domain paintings as covers. Click one to count its frames or press play to listen. They cover CBR from 128 to 320 kbps, VBR, 44.1 and 48 kHz, ID3v1 and ID3v2 tags, and one MPEG-2 clip (_The Eagle Has Landed_) that shows the unsupported-format error. Sources and licenses are in [samples/library/CREDITS.md](samples/library/CREDITS.md).
 
+While a track plays, a bar along the bottom draws its frames as a moving tape. Every frame is the same 1,152 samples (about 26 ms), so the bars are equally wide; each bar's height is the bytes the encoder spent on that frame. Constant bitrate files make a flat wall, variable bitrate files a skyline that dips in quiet passages. The server finds every frame with `?frames` (it never decodes audio, and maps a whole song in tens of milliseconds); the browser's playback clock picks the frame being heard, `time × sampleRate / 1152`. A strip of the whole song underneath seeks when clicked.
+
 ## API
 
 ### `POST /file-upload`
@@ -92,6 +94,25 @@ Each step names the function that did the work. The page shows that function's s
 Most steps also carry a `picture`: the real numbers behind that step's animation on the page, such as the ID3 tag's size or the first frame's bitrate and length.
 
 When the file has an ID3v2.3 or v2.4 tag with song details, the response also has a `song` object: `title`, `artist`, `album`, `year`, `genre`, `track` and `cover`, each only when present. `cover` is the front cover as a `data:` URL. Tags over 5 MB are not read. The details are read from the tag's bytes as they stream past, so the count is unaffected, and nothing is stored. The code is in [src/tags.ts](src/tags.ts).
+
+### `POST /file-upload?frames`
+
+`?frames` adds where every audio frame is, as parallel arrays. The page's player draws them in time with playback. It combines with `?trace`.
+
+```json
+{
+  "frameCount": 4478,
+  "frames": {
+    "samplesPerFrame": 1152,
+    "sampleRate": 48000,
+    "offsets": [1328, 2000, 2480],
+    "sizes": [672, 480, 480],
+    "bitratesKbps": [224, 160, 160]
+  }
+}
+```
+
+`offsets` are bytes from the start of the file. Frame `i` plays from `i × samplesPerFrame / sampleRate` seconds. The code is in [src/frames.ts](src/frames.ts).
 
 ### `GET /`
 
@@ -173,12 +194,14 @@ src/                The API. Runs unchanged on Node and on Cloudflare Workers.
   app.ts            HTTP routes and error handling.
   mp3.ts            The frame counter. No dependencies.
   trace.ts          Turns the counter's events into the steps shown by ?trace.
+  frames.ts         Collects every frame's offset, size and bitrate for ?frames.
   server.ts         Starts the app on Node for local use.
 web/                The upload page: React, Tailwind CSS and shadcn/ui components.
   app.tsx           The page.
   code.tsx          Shows the server function behind each trace step.
   examples.tsx      The sidebar of example MP3s: play one, or click it to count it.
   library.ts        The example tracks.
+  player.tsx        The player bar and its frame tape, synced to playback.
   components/ui/    shadcn/ui components (Trace, Button, Card, Spinner, Collapsible).
 samples/
   sample.mp3        The sample file provided with the assessment, also served by the page.
