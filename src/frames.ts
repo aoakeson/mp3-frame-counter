@@ -14,6 +14,8 @@ export interface FrameMap {
   /** Bytes in each frame, header included. */
   sizes: number[];
   bitratesKbps: number[];
+  /** Milliseconds the server spent reading and counting the file. */
+  ms: number;
 }
 
 export class FrameMapper {
@@ -23,6 +25,7 @@ export class FrameMapper {
     offsets: [],
     sizes: [],
     bitratesKbps: [],
+    ms: 0,
   };
 
   /** Pass this to countFrames. An arrow function, so it can be handed over as-is. */
@@ -34,7 +37,7 @@ export class FrameMapper {
     this.map.bitratesKbps.push(event.header.bitrateKbps);
   };
 
-  result(): FrameMap {
-    return this.map;
+  result(ms: number): FrameMap {
+    return { ...this.map, ms };
   }
 }
