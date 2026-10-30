@@ -5,7 +5,7 @@ Where the build departed from this plan:
 
 - **False-sync lookahead was added**, not deferred. Fixtures showed random junk producing a false frame and an MPEG-2 file counting 1. After losing sync, a header now counts only when another header, or the end of the input, follows where its frame ends.
 - **The parser walks an index** through each chunk instead of slicing the buffer per byte, so resyncing allocates nothing.
-- **The repository is private** for now; creating a public repository needs the owner's go-ahead.
+- **The repository started private** and was made public once the owner approved.
 - **Deployed with `npm run deploy`.** Workers Builds (auto-deploy on merge) is a one-time dashboard step that is not connected yet.
 - **The Info-frame question is moot for the sample.** It is variable bitrate, so its Xing header, ffprobe and every mediainfo version agree on 6089.
 
