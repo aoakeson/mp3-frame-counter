@@ -314,7 +314,7 @@ function Steps({ steps }: { steps: TraceStep[] }) {
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent className="flex flex-col gap-3">
-              {!step.error && <StepIllustration kind={step.kind} />}
+              {step.picture && <StepIllustration picture={step.picture} />}
               <p>{step.detail}</p>
               <Code code={step.code} />
             </TraceCollapsibleContent>

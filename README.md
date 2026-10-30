@@ -87,6 +87,7 @@ Without it, or with any other value such as `?trace=false`, the response is exac
 ```
 
 Each step names the function that did the work. The page shows that function's source, bundled from the same files the server runs.
+Most steps also carry a `picture`: the real numbers behind that step's animation on the page, such as the ID3 tag's size or the first frame's bitrate and length.
 
 ### `GET /`
 

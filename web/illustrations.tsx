@@ -8,7 +8,7 @@
  * reduced motion see.
  */
 import type { ReactNode } from "react";
-import type { TraceStep } from "../src/trace";
+import type { Picture } from "../src/trace";
 
 const LOOP = "5s";
 const MOTION = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -34,24 +34,35 @@ export const COLORS = {
   },
 };
 
-const STEPS: Record<TraceStep["kind"], () => ReactNode> = {
-  upload: Upload,
-  id3: SkipTag,
-  header: ReadHeader,
-  metadata: SkipNotes,
-  skip: SkipJunk,
-  frames: CountFrames,
-  result: Reply,
-};
+/** The picture for one step of the upload page's trace, drawn with that file's numbers. */
+export function StepIllustration({ picture: p }: { picture: Picture }) {
+  return <Illustration>{draw(p)}</Illustration>;
+}
 
-/** The picture for one step of the upload page's trace. */
-export function StepIllustration({ kind }: { kind: TraceStep["kind"] }) {
-  const Picture = STEPS[kind];
-  return (
-    <Illustration>
-      <Picture />
-    </Illustration>
-  );
+function draw(p: Picture): ReactNode {
+  switch (p.kind) {
+    case "upload":
+      return <Upload bytes={p.bytes} />;
+    case "id3":
+      return <SkipTag bytes={p.bytes} />;
+    case "skip":
+      return <SkipJunk bytes={p.bytes} />;
+    case "header":
+      return (
+        <ReadHeader
+          bitrateKbps={p.bitrateKbps}
+          sampleRate={p.sampleRate}
+          padding={p.padding}
+          frameLength={p.frameLength}
+        />
+      );
+    case "metadata":
+      return <SkipNotes tag={p.tag} declaredFrames={p.declaredFrames} />;
+    case "frames":
+      return <CountFrames count={p.count} sizes={p.sizes} />;
+    case "result":
+      return <Reply frameCount={p.frameCount} />;
+  }
 }
 
 export function Illustration({ children }: { children: ReactNode }) {
@@ -61,9 +72,14 @@ export function Illustration({ children }: { children: ReactNode }) {
 }
 
 // ---- The pictures ----
+// Each takes the real numbers from a trace. The defaults, shown on the How it works
+// page, are the sample file's, except EXAMPLE_SIZES.
+
+/** Made-up variable-bitrate frame sizes. The sample's first frames are all 104 bytes. */
+const EXAMPLE_SIZES = [522, 365, 626, 313, 418];
 
 /** The file travels to the server in chunks. Also used for "streaming". */
-export function Upload() {
+export function Upload({ bytes }: { bytes?: number }) {
   return (
     <Scene
       label="The file travels from your browser to the server in small chunks, one after another."
@@ -72,7 +88,9 @@ export function Upload() {
       <Devices />
       <Wire />
       <text x={160} y={30} {...small}>
-        chunk by chunk
+        {bytes === undefined
+          ? "chunk by chunk"
+          : `${num(bytes)} bytes, chunk by chunk`}
       </text>
       {[0, 1, 2].map((i) => {
         const start = 0.08 + i * 0.22;
@@ -107,7 +125,7 @@ export function Upload() {
 }
 
 /** The reader reads the ID3 tag's size and jumps over the whole tag. */
-export function SkipTag() {
+export function SkipTag({ bytes = 44 }: { bytes?: number }) {
   const y = 46;
   return (
     <Scene
@@ -123,7 +141,7 @@ export function SkipTag() {
         className={COLORS.tag.fill}
       />
       <text x={70} y={y + 11} {...onBlock} fontWeight={600}>
-        ID3 tag · 44 bytes
+        ID3 tag · {num(bytes)} bytes
       </text>
       <text x={70} y={y + 20} {...onBlock} fontSize={6.5}>
         title · artist · cover art
@@ -144,7 +162,7 @@ export function SkipTag() {
       </path>
       <text x={75} y={12} {...small} className="fill-foreground">
         <Appear at={0.25} />
-        jump 44 bytes
+        jump {num(bytes)} bytes
       </text>
 
       <g transform={`translate(134 ${y - 3})`}>
@@ -165,14 +183,24 @@ export function SkipTag() {
 }
 
 /** The 4 header bytes come apart into fields, and the fields give the frame's length. */
-export function ReadHeader() {
+export function ReadHeader({
+  bitrateKbps = 64,
+  sampleRate = 44100,
+  padding = 0,
+  frameLength = 208,
+}: {
+  bitrateKbps?: number;
+  sampleRate?: number;
+  padding?: number;
+  frameLength?: number;
+}) {
   const fields = [
     ["sync", "✓"],
     ["version", "MPEG-1"],
     ["layer", "III"],
-    ["bitrate", "64 kbps"],
-    ["sample rate", "44.1 kHz"],
-    ["padding", "0"],
+    ["bitrate", `${bitrateKbps} kbps`],
+    ["sample rate", `${sampleRate / 1000} kHz`],
+    ["padding", String(padding)],
   ];
   return (
     <Scene
@@ -249,10 +277,10 @@ export function ReadHeader() {
           fontSize={8}
           className="fill-foreground font-mono"
         >
-          144 × 64000 ÷ 44100 + 0 = 208 bytes
+          {`144 × ${bitrateKbps * 1000} ÷ ${sampleRate} + ${padding} = ${frameLength} bytes`}
         </text>
         <text x={160} y={114} {...small}>
-          so the next frame starts 208 bytes later
+          so the next frame starts {frameLength} bytes later
         </text>
       </g>
     </Scene>
@@ -260,7 +288,13 @@ export function ReadHeader() {
 }
 
 /** The first frame holds the encoder's notes, not sound, so it is not counted. */
-export function SkipNotes() {
+export function SkipNotes({
+  tag = "Xing / Info",
+  declaredFrames = 6089,
+}: {
+  tag?: string;
+  declaredFrames?: number | null;
+}) {
   const y = 54;
   return (
     <Scene
@@ -272,7 +306,7 @@ export function SkipNotes() {
       <Frame x={120} y={y} w={90} h={24} />
       <Frame x={210} y={y} w={100} h={24} />
       <text x={65} y={y + 34} {...small}>
-        Xing / Info frame
+        {tag} frame
       </text>
 
       <g>
@@ -297,7 +331,9 @@ export function SkipNotes() {
           fontSize={8}
           className="fill-foreground"
         >
-          "6,089 audio frames follow"
+          {declaredFrames === null
+            ? "no frame count given"
+            : `"${num(declaredFrames)} audio frames follow"`}
         </text>
       </g>
 
@@ -341,7 +377,7 @@ export function SkipNotes() {
 }
 
 /** The reader steps through junk one byte at a time until two headers line up. */
-export function SkipJunk() {
+export function SkipJunk({ bytes }: { bytes?: number }) {
   const y = 44;
   const junk = [0, 1, 2, 3, 4, 5, 6].map((i) => 10 + i * 16);
   const stops = [...junk.map((x) => x + 7), 126];
@@ -366,7 +402,9 @@ export function SkipJunk() {
         </g>
       ))}
       <text x={65} y={y + 36} {...small}>
-        junk: not a frame
+        {bytes === undefined
+          ? "junk: not a frame"
+          : `${num(bytes)} bytes of junk`}
       </text>
       <Frame x={122} y={y} w={90} h={24} />
       <Frame x={212} y={y} w={98} h={24} />
@@ -397,10 +435,24 @@ export function SkipJunk() {
 }
 
 /** The reader hops from header to header, and the count goes up with each hop. */
-export function CountFrames() {
+export function CountFrames({
+  count = 6089,
+  sizes = EXAMPLE_SIZES,
+}: {
+  count?: number;
+  /** Byte lengths of the first few frames, drawn to scale across 300 units. */
+  sizes?: number[];
+}) {
   const y = 50;
-  const widths = [70, 50, 80, 45, 55];
-  const sizes = [522, 365, 626, 313, 418];
+  const total = sizes.reduce((a, b) => a + b, 0);
+  const widths = sizes.map((size) => (size / total) * 300);
+  // One count per hop, then the file's real total once the last hop has landed.
+  const counts = [0, ...sizes.map((_, i) => i + 1)];
+  const times = [0, ...sizes.map((_, i) => i * 0.16 + 0.02)];
+  if (count > sizes.length) {
+    counts.push(count);
+    times.push(0.86);
+  }
   const xs = widths.map(
     (_, i) => 10 + widths.slice(0, i).reduce((a, b) => a + b, 0),
   );
@@ -415,10 +467,11 @@ export function CountFrames() {
       label="The reader hops from one frame header to the next. Each header says how long its frame is, so the reader knows exactly where to land. Frames can be different sizes."
       height={96}
     >
-      <Counter
-        counts={[0, 1, 2, 3, 4, 5]}
-        times={[0, ...xs.map((_, i) => i * step + 0.02)]}
-      />
+      <text x={10} y={12} {...small} textAnchor="start">
+        {sizes.length === 1 ? "first frame" : `first ${sizes.length} frames`},
+        size in bytes
+      </text>
+      <Counter counts={counts} times={times} />
       {xs.map((x, i) => (
         <g key={x}>
           <Frame
@@ -429,7 +482,7 @@ export function CountFrames() {
             litAt={i * step + 0.02}
           />
           <text x={x + (widths[i] ?? 0) / 2} y={y + 36} {...small}>
-            {sizes[i]} bytes
+            {sizes[i]}
           </text>
           {i > 0 && (
             <path
@@ -450,10 +503,10 @@ export function CountFrames() {
 }
 
 /** The server answers with the count. */
-export function Reply() {
+export function Reply({ frameCount = 6089 }: { frameCount?: number }) {
   return (
     <Scene
-      label='The server sends back the answer as JSON: {"frameCount": 6089}.'
+      label={`The server sends back the answer as JSON: {"frameCount": ${frameCount}}.`}
       height={92}
     >
       <Devices
@@ -468,7 +521,7 @@ export function Reply() {
               fontWeight={600}
               className="fill-foreground"
             >
-              6,089
+              {num(frameCount)}
             </text>
             <text x={43} y={57} {...small}>
               frames
@@ -478,7 +531,7 @@ export function Reply() {
       />
       <Wire />
       <text x={160} y={28} {...small} className="fill-foreground font-mono">
-        {'{"frameCount": 6089}'}
+        {`{"frameCount": ${frameCount}}`}
       </text>
       <g transform="translate(140 38)">
         <Move
@@ -495,16 +548,16 @@ export function Reply() {
           values={[0, 0, 1, 1, 0, 0]}
           times={[0, 0.12, 0.15, 0.58, 0.62, 1]}
         />
-        <rect width={40} height={16} rx={8} className={COLORS.header.fill} />
+        <rect width={44} height={16} rx={8} className={COLORS.header.fill} />
         <text
-          x={20}
+          x={22}
           y={11}
           {...small}
           fontSize={8}
           fontWeight={600}
           className="fill-white font-mono"
         >
-          6089
+          {frameCount}
         </text>
       </g>
     </Scene>
@@ -793,7 +846,7 @@ function Counter({ counts, times }: { counts: number[]; times: number[] }) {
             values={counts.map((_, j) => (j === i ? 1 : 0))}
             times={times}
           />
-          {n}
+          {num(n)}
         </text>
       ))}
     </g>
@@ -957,6 +1010,10 @@ function hops(xs: number[], y: number, step: number) {
   to.push([xs.at(-1) ?? 0, y]);
   times.push(1);
   return { to, times };
+}
+
+function num(n: number): string {
+  return n.toLocaleString("en-US");
 }
 
 function round(n: number): number {
