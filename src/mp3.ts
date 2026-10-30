@@ -38,6 +38,8 @@ export interface FrameHeader {
 /** What the counter did, reported to an optional observer. Offsets are bytes from the start. */
 export type FrameEvent =
   | { type: "id3"; offset: number; length: number; version: number }
+  /** The ID3 tag's bytes as they are skipped, in order, so its details can be read. */
+  | { type: "id3-data"; bytes: Uint8Array }
   | {
       type: "metadata";
       offset: number;
@@ -61,6 +63,7 @@ export async function countFrames(
   let buffer: Uint8Array = new Uint8Array(0); // bytes not yet consumed
   let consumed = 0; // bytes before buffer[0], so events can report absolute offsets
   let skip = 0; // bytes still to jump over: the rest of a frame or of the ID3 tag
+  let tagLeft = 0; // how many of those skip bytes belong to the ID3 tag
   let count = 0;
   let checkedId3 = false;
   let checkedFirstFrame = false;
@@ -79,6 +82,11 @@ export async function countFrames(
     while (true) {
       if (skip > 0) {
         const n = Math.min(skip, buffer.length - pos);
+        if (tagLeft > 0) {
+          const bytes = buffer.subarray(pos, pos + Math.min(n, tagLeft));
+          onEvent?.({ type: "id3-data", bytes });
+          tagLeft -= bytes.length;
+        }
         pos += n;
         skip -= n;
         if (skip > 0) break; // the frame continues in the next chunk
@@ -90,6 +98,7 @@ export async function countFrames(
         if (remaining < ID3_HEADER_SIZE && !final) break;
         checkedId3 = true;
         skip = id3v2TagLength(view, pos);
+        tagLeft = skip;
         if (skip > 0) {
           const version = view.getUint8(pos + 3);
           onEvent?.({
