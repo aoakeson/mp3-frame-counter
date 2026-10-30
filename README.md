@@ -15,6 +15,52 @@ npm start
 The server prints `Listening on http://localhost:3000`.
 To use a different port, set `PORT` (`PORT=3001 npm start`, or in PowerShell `$env:PORT=3001; npm start`).
 
+## Try it
+
+In a second terminal, from the project folder:
+
+```bash
+curl -F "file=@samples/sample.mp3" http://localhost:3000/file-upload
+```
+
+```json
+{ "frameCount": 6089 }
+```
+
+On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` there is an alias for a different command.
+
+## API
+
+### `POST /file-upload`
+
+Send the MP3 in either of two ways:
+
+- **As a form upload** (`multipart/form-data`) with the file in a field named `file`, as above.
+- **As the raw request body**, which is streamed and suits large files:
+
+```bash
+curl --data-binary "@samples/sample.mp3" http://localhost:3000/file-upload
+```
+
+The file name and `Content-Type` are not used to decide whether the upload is an MP3; the parser decides.
+That is why a non-MP3 file gets `400` rather than `415`.
+
+Every response is JSON with `Content-Type: application/json`:
+
+| Status | Body                                                        | When                                                         |
+| ------ | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| `200`  | `{"frameCount": 6089}`                                      | At least one frame was found                                 |
+| `400`  | `{"error": "No file received. ..."}`                        | Empty body, no `file` field, empty file, or a malformed form |
+| `400`  | `{"error": "No MPEG-1 Layer III frames found. ..."}`        | The file is not an MP3, or is another MPEG format            |
+| `405`  | `{"error": "Method not allowed"}`                           | Any method other than `POST`; the `Allow` header says `POST` |
+| `413`  | `{"error": "Multipart uploads are limited to 100 MB. ..."}` | A form upload over 100 MB. Raw bodies have no limit locally  |
+| `404`  | `{"error": "Not found"}`                                    | Any other path                                               |
+| `500`  | `{"error": "Internal server error"}`                        | Unexpected failure; details go to the server log only        |
+
+### `GET /`
+
+A small upload page.
+
 ## How counting works
 
 All of it is in [src/mp3.ts](src/mp3.ts), which imports nothing.
