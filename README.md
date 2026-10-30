@@ -15,6 +15,41 @@ npm start
 The server prints `Listening on http://localhost:3000`.
 To use a different port, set `PORT` (`PORT=3001 npm start`, or in PowerShell `$env:PORT=3001; npm start`).
 
+## How counting works
+
+All of it is in [src/mp3.ts](src/mp3.ts), which imports nothing.
+
+1. **Skip the ID3v2 tag.** Most files start with one (title, cover art). Its header states its size, so it is jumped over whole. Scanning through it could mistake cover-art bytes for frames.
+2. **Read a frame header.** Four bytes: sync bits, version, layer, bitrate, sample rate, padding. Only MPEG-1 Layer III is accepted.
+3. **Jump to the next frame.** Frame length is `floor(144 × bitrate / sampleRate) + padding` bytes, so frames are skipped, never scanned. Variable bitrate needs nothing special, because each header gives its own length.
+4. **Don't count the Xing/Info frame.** The first frame of most files is a valid frame that holds encoder metadata instead of audio.
+5. **Resync on anything else.** Junk, corrupt data and trailing tags are passed over one byte at a time. After losing sync, a header is trusted only if another header follows exactly where its frame ends, so random bytes that happen to look like a header are not counted.
+
+The upload is processed as a stream, one chunk at a time. Memory use stays flat whatever the file size, and the work is proportional to the number of frames.
+
+### Why the Xing/Info frame is excluded
+
+That frame has a valid header but carries no audio. The encoder records the number of audio frames inside it, excluding itself, and ffmpeg skips it too. For `samples/sample.mp3` all three agree:
+
+| Source                        | Frames |
+| ----------------------------- | ------ |
+| This API                      | 6089   |
+| Xing header's own frame count | 6089   |
+| `ffprobe` decoded frames      | 6089   |
+
+Counting raw headers instead would give 6090.
+Note that mediainfo releases older than 26.10 report one extra frame for _constant_ bitrate files with an Info header, because they count that frame. The sample is variable bitrate, so mediainfo reports the Xing value either way.
+
+### Verify it yourself
+
+```bash
+ffprobe -v error -select_streams a:0 -count_frames -show_entries stream=nb_read_frames -of default=nw=1:nk=1 samples/sample.mp3
+```
+
+```bash
+mediainfo --Inform="Audio;%FrameCount%" samples/sample.mp3
+```
+
 ## Development
 
 | Command          | What it does                                                             |
@@ -30,6 +65,9 @@ To use a different port, set `PORT` (`PORT=3001 npm start`, or in PowerShell `$e
 src/
   app.ts      HTTP routes and error handling. Runs unchanged on Node and on Cloudflare Workers.
   server.ts   Starts the app on Node for local use.
+  mp3.ts      The frame counter. No dependencies.
 public/
   index.html  The upload page.
+samples/
+  sample.mp3  The sample file provided with the assessment.
 ```
