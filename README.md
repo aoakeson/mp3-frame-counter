@@ -52,23 +52,25 @@ curl --data-binary "@samples/sample.mp3" http://localhost:3000/file-upload
 
 The file name and `Content-Type` are not used to decide whether the upload is an MP3; the parser decides.
 That is why a non-MP3 file gets `400` rather than `415`.
+If a form has several `file` fields, the first one is counted.
 
 Every response is JSON with `Content-Type: application/json`:
 
-| Status | Body                                                        | When                                                         |
-| ------ | ----------------------------------------------------------- | ------------------------------------------------------------ |
-| `200`  | `{"frameCount": 6089}`                                      | At least one frame was found                                 |
-| `400`  | `{"error": "No file received. ..."}`                        | Empty body, no `file` field, empty file, or a malformed form |
-| `400`  | `{"error": "No MPEG-1 Layer III frames found. ..."}`        | The file is not an MP3, or is another MPEG format            |
-| `405`  | `{"error": "Method not allowed"}`                           | Any method other than `POST`; the `Allow` header says `POST` |
-| `413`  | `{"error": "Multipart uploads are limited to 100 MB. ..."}` | A form upload over 100 MB. Raw bodies have no limit locally  |
-| `404`  | `{"error": "Not found"}`                                    | Any other path                                               |
-| `500`  | `{"error": "Internal server error"}`                        | Unexpected failure; details go to the server log only        |
+| Status | Body                                                               | When                                                         |
+| ------ | ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `200`  | `{"frameCount": 6089}`                                             | At least one frame was found                                 |
+| `400`  | `{"error": "No file received. ..."}`                               | Empty body, no `file` field, empty file, or a malformed form |
+| `400`  | `{"error": "No MPEG-1 Layer III frames found. ..."}`               | The file is not an MP3, or is another MPEG format            |
+| `405`  | `{"error": "Method not allowed"}`                                  | Any method other than `POST`; the `Allow` header says `POST` |
+| `411`  | `{"error": "Multipart uploads need a Content-Length header. ..."}` | A form upload sent in chunks, without a declared size        |
+| `413`  | `{"error": "Multipart uploads are limited to 100 MB. ..."}`        | A form upload over 100 MB. Raw bodies have no limit locally  |
+| `404`  | `{"error": "Not found"}`                                           | Any other path                                               |
+| `500`  | `{"error": "Internal server error"}`                               | Unexpected failure; details go to the server log only        |
 
 ### `POST /file-upload?trace`
 
-The same request with `?trace` also explains what happened, step by step. The upload page uses it.
-Without `?trace` the response is exactly `{"frameCount": n}`.
+The same request with `?trace` (or `?trace=1`, `?trace=true`) also explains what happened, step by step. The upload page uses it.
+Without it, or with any other value such as `?trace=false`, the response is exactly `{"frameCount": n}`.
 
 ```json
 {
@@ -124,6 +126,23 @@ ffprobe -v error -select_streams a:0 -count_frames -show_entries stream=nb_read_
 ```bash
 mediainfo --Inform="Audio;%FrameCount%" samples/sample.mp3
 ```
+
+ffprobe's decoded count can be one lower than the number of frames in a file. When gapless-playback data marks a whole last frame as padding, the decoder drops that frame. `-count_packets` with `nb_read_packets` counts it, but also counts junk at the ends of a file as packets.
+
+### How it was tested
+
+The counter was compared against ffprobe and against each file's own Xing/Info/VBRI frame count, with every file also fed in random chunk sizes to check the count never depends on how the upload arrives.
+
+| Files                                                                                                                 | Count | Result                                                       |
+| --------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------ |
+| Real-world MP3s from many encoders                                                                                    | 138   | All agree with ffprobe, allowing for the padding frame above |
+| Generated: every MPEG-1 sample rate × bitrate, VBR 0–9, mono, with and without Xing, ID3 v2.3/v2.4/v1, 1 MB cover art | 69    | All match ffprobe                                            |
+| Other formats: MPEG-2/2.5, Layer II, WAV, FLAC, Ogg, Opus, AAC                                                        | 13    | All 0 frames                                                 |
+| Hostile: broken ID3 sizes, fake frames inside tags, junk and sync-byte floods, bit flips, truncation, joined files    | 43    | All correct                                                  |
+
+Every one of the 148 files with an encoder frame count matched it exactly.
+A 1 GB upload streamed through with the server's memory flat at about 75 MB.
+An MP3 stored inside a Matroska (`.mkv`) container counts 0. That is a container, not an MP3 file: it puts a small header between frames, so no two frame headers line up.
 
 ## Development
 

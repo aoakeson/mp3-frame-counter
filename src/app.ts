@@ -12,15 +12,20 @@ const NO_FILE =
   "No file received. Send the MP3 as multipart/form-data with a 'file' field, or as the raw request body.";
 const TOO_LARGE =
   "Multipart uploads are limited to 100 MB. Send larger files as the raw request body.";
+const NO_LENGTH =
+  "Multipart uploads need a Content-Length header. Send the file as the raw request body instead.";
 const NOT_MP3 =
   "No MPEG-1 Layer III frames found. Only that format (standard .mp3) is supported.";
 
-const app = new Hono();
+// strict: false lets "/file-upload/" match "/file-upload" too.
+const app = new Hono({ strict: false });
 
 app.post("/file-upload", async (c) => {
-  // `?trace` adds a step-by-step explanation, used by the upload page. Without it
-  // the response is exactly the specified {"frameCount": n}.
-  const trace = c.req.query("trace") === undefined ? undefined : new Trace();
+  // `?trace`, `?trace=1` or `?trace=true` adds a step-by-step explanation, used by the
+  // upload page. Without it the response is exactly the specified {"frameCount": n}.
+  const traceParam = c.req.query("trace");
+  const wantTrace = ["", "1", "true"].includes(traceParam ?? "off");
+  const trace = wantTrace ? new Trace() : undefined;
   const started = performance.now();
 
   const upload = await uploadStream(c.req.raw);
@@ -46,7 +51,8 @@ app.onError((err, c) => {
   if (err instanceof HTTPException) {
     return c.json({ error: err.message }, err.status);
   }
-  console.error(err); // Full detail goes to the log, never to the client.
+  // A client that hangs up mid-upload is not a server fault, and nobody reads the reply.
+  if (!c.req.raw.signal.aborted) console.error(err); // detail to the log, never the client
   return c.json({ error: "Internal server error" }, 500);
 });
 
@@ -60,7 +66,7 @@ async function uploadStream(req: Request): Promise<{
   stream: ReadableStream<Uint8Array>;
   via: "raw" | "multipart";
 }> {
-  const contentType = req.headers.get("content-type") ?? "";
+  const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
   const contentLength = req.headers.get("content-length");
 
   if (!contentType.startsWith("multipart/form-data")) {
@@ -74,11 +80,16 @@ async function uploadStream(req: Request): Promise<{
     return { stream: req.body, via: "raw" };
   }
 
+  // The size check needs a declared length. Without one (a chunked upload) the whole
+  // form would be buffered unchecked, so refuse it. Browsers and curl always send one.
+  if (contentLength === null) {
+    throw new HTTPException(411, { message: NO_LENGTH });
+  }
   if (Number(contentLength) > MAX_MULTIPART_BYTES) {
     throw new HTTPException(413, { message: TOO_LARGE });
   }
   const form = await req.formData().catch(() => null); // malformed form: same as no file
-  const file = form?.get("file");
+  const file = form?.get("file"); // with several 'file' fields, the first one is used
   if (!(file instanceof File) || file.size === 0) {
     throw new HTTPException(400, { message: NO_FILE });
   }
