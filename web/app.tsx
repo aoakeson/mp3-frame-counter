@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/trace";
 import type { TraceStep } from "../src/trace";
 import { Code } from "./code";
+import { StepIllustration } from "./illustrations";
 
 /** The JSON from `POST /file-upload?trace`: a count or an error, plus the steps. */
 interface Response {
@@ -90,16 +91,21 @@ export function App() {
   return (
     <main className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-4 py-12 sm:py-20">
       <header className="flex flex-col gap-3">
-        <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <AudioLinesIcon className="size-4" aria-hidden />
-          MP3 Frame Counter
-        </p>
+        <nav className="flex items-center justify-between gap-4 text-sm font-medium text-muted-foreground">
+          <p className="flex items-center gap-2">
+            <AudioLinesIcon className="size-4" aria-hidden />
+            MP3 Frame Counter
+          </p>
+          <a href="/how-it-works/" className="hover:text-foreground">
+            How it works →
+          </a>
+        </nav>
         <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
           How many frames are in your MP3?
         </h1>
         <p className="text-pretty text-muted-foreground">
-          Upload a file to count its audio frames. Then open any step to see the
-          exact code that ran on the server.
+          Upload a file to count its audio frames. Then open any step to see
+          what happened and the exact code that ran on the server.
         </p>
       </header>
 
@@ -207,7 +213,7 @@ function Result({ state }: { state: Exclude<State, { kind: "idle" }> }) {
                 What happened
               </h2>
               <p className="text-xs text-muted-foreground/70">
-                Open a step to see its code
+                Open a step to see it happen
               </p>
             </div>
             <Steps steps={state.body.trace} />
@@ -308,6 +314,7 @@ function Steps({ steps }: { steps: TraceStep[] }) {
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent className="flex flex-col gap-3">
+              {!step.error && <StepIllustration kind={step.kind} />}
               <p>{step.detail}</p>
               <Code code={step.code} />
             </TraceCollapsibleContent>
