@@ -30,6 +30,7 @@ import type { TraceStep } from "../src/trace";
 import { Code } from "./code";
 import { Examples } from "./examples";
 import { StepIllustration } from "./illustrations";
+import { PlayerBar, usePlayer } from "./player";
 
 /** The JSON from `POST /file-upload?trace`: a count or an error, plus the steps. */
 interface Response {
@@ -57,6 +58,7 @@ const ICONS: Record<TraceStep["kind"], LucideIcon> = {
 
 export function App() {
   const [state, setState] = useState<State>({ kind: "idle" });
+  const player = usePlayer();
   const result = useRef<HTMLDivElement>(null);
 
   // On narrow screens the examples sit below the result, so bring the result into view.
@@ -103,7 +105,10 @@ export function App() {
 
   return (
     // One column on small screens (examples below the result); a sidebar from lg up.
-    <div className="mx-auto grid min-h-svh max-w-6xl grid-rows-[1fr_auto] gap-x-12 gap-y-8 px-4 py-12 sm:py-20 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div
+      data-player={player.track ? "" : undefined}
+      className="group/page mx-auto grid min-h-svh max-w-6xl grid-rows-[1fr_auto] gap-x-12 gap-y-8 px-4 py-12 sm:py-20 data-player:pb-72 lg:grid-cols-[minmax(0,1fr)_20rem]"
+    >
       <main className="flex flex-col gap-8">
         <header className="flex flex-col gap-3">
           <nav className="flex items-center justify-between gap-4 text-sm font-medium text-muted-foreground">
@@ -138,9 +143,10 @@ export function App() {
       </main>
 
       <aside className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
-        <div className="lg:sticky lg:top-8 lg:-mr-2 lg:max-h-[calc(100svh-4rem)] lg:overflow-y-auto lg:pr-2">
+        <div className="lg:sticky lg:top-8 lg:-mr-2 lg:max-h-[calc(100svh-4rem)] lg:group-data-player/page:max-h-[calc(100svh-18rem)] lg:overflow-y-auto lg:pr-2">
           <Examples
             busy={state.kind === "counting"}
+            player={player}
             onAnalyze={(track) =>
               countUrl(`/library/${track.slug}.mp3`, `${track.slug}.mp3`)
             }
@@ -148,7 +154,7 @@ export function App() {
         </div>
       </aside>
 
-      <footer className=" flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
         <code className="font-mono">
           curl -F file=@song.mp3 {window.location.origin}/file-upload
         </code>
@@ -159,6 +165,9 @@ export function App() {
           Source on GitHub
         </a>
       </footer>
+
+      {player.element}
+      <PlayerBar player={player} />
     </div>
   );
 }

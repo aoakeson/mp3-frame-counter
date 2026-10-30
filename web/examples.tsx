@@ -1,28 +1,16 @@
 import { PauseIcon, PlayIcon } from "lucide-react";
-import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LIBRARY, type Track } from "./library";
+import type { Player } from "./player";
 
 /** The example MP3s. Click one to count its frames, or press play to listen. */
 export function Examples(props: {
   busy: boolean;
+  player: Player;
   onAnalyze: (track: Track) => void;
 }) {
-  // One player for the whole list, so starting a track stops the last one.
-  const audio = useRef<HTMLAudioElement>(null);
-  const loaded = useRef<string>(undefined);
-  const [playing, setPlaying] = useState<string>();
-
-  function toggle(track: Track) {
-    const player = audio.current;
-    if (!player) return;
-    if (playing === track.slug) return player.pause();
-    if (loaded.current !== track.slug) {
-      player.src = `/library/${track.slug}.mp3`;
-      loaded.current = track.slug;
-    }
-    player.play().catch(() => setPlaying(undefined));
-  }
+  const { player } = props;
+  const playing = player.playing ? player.track?.slug : undefined;
 
   return (
     <section aria-label="Example MP3s" className="flex flex-col gap-3">
@@ -79,19 +67,13 @@ export function Examples(props: {
               variant="ghost"
               size="icon-sm"
               aria-label={`${playing === track.slug ? "Pause" : "Play"} ${track.title}`}
-              onClick={() => toggle(track)}
+              onClick={() => player.toggle(track)}
             >
               {playing === track.slug ? <PauseIcon /> : <PlayIcon />}
             </Button>
           </li>
         ))}
       </ul>
-      {/* biome-ignore lint/a11y/useMediaCaption: music, nothing to caption */}
-      <audio
-        ref={audio}
-        onPlay={() => setPlaying(loaded.current)}
-        onPause={() => setPlaying(undefined)}
-      />
     </section>
   );
 }

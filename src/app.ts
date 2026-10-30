@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { FrameMapper } from "./frames";
 import { countFrames } from "./mp3";
 import { Trace } from "./trace";
 
@@ -21,25 +22,31 @@ const NOT_MP3 =
 const app = new Hono({ strict: false });
 
 app.post("/file-upload", async (c) => {
-  // `?trace`, `?trace=1` or `?trace=true` adds a step-by-step explanation, used by the
-  // upload page. Without it the response is exactly the specified {"frameCount": n}.
-  const traceParam = c.req.query("trace");
-  const wantTrace = ["", "1", "true"].includes(traceParam ?? "off");
-  const trace = wantTrace ? new Trace() : undefined;
+  // `?trace` adds a step-by-step explanation and `?frames` the position of every frame,
+  // both used by the upload page. Without them the response is exactly {"frameCount": n}.
+  const trace = flag(c.req.query("trace")) ? new Trace() : undefined;
+  const mapper = flag(c.req.query("frames")) ? new FrameMapper() : undefined;
   const started = performance.now();
 
   const upload = await uploadStream(c.req.raw);
-  const frameCount = await countFrames(upload.stream, trace?.record);
+  const frameCount = await countFrames(upload.stream, (event) => {
+    trace?.record(event);
+    mapper?.record(event);
+  });
 
   // Zero frames almost always means the file is not an MP3. Saying so beats answering 0.
   const status = frameCount > 0 ? 200 : 400;
   const body = frameCount > 0 ? { frameCount } : { error: NOT_MP3 };
-  if (!trace) return c.json(body, status);
+  const frames = frameCount > 0 ? mapper?.result() : undefined;
+  if (!trace) return c.json({ ...body, ...(frames && { frames }) }, status);
 
   const steps = trace.steps(upload.via, status, performance.now() - started);
   // The song's details, when the ID3 tag has any. Only with ?trace.
   const song = trace.song();
-  return c.json({ ...body, ...(song && { song }), trace: steps }, status);
+  return c.json(
+    { ...body, ...(song && { song }), trace: steps, ...(frames && { frames }) },
+    status,
+  );
 });
 
 // Hono does not send 405 on its own. Registered after .post, so only other methods land here.
@@ -57,6 +64,11 @@ app.onError((err, c) => {
   if (!c.req.raw.signal.aborted) console.error(err); // detail to the log, never the client
   return c.json({ error: "Internal server error" }, 500);
 });
+
+/** `?name`, `?name=1` and `?name=true` turn an option on. */
+function flag(value: string | undefined): boolean {
+  return value !== undefined && ["", "1", "true"].includes(value);
+}
 
 /**
  * Returns the uploaded bytes as a stream: the 'file' part of a multipart form, or
