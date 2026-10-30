@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { countFrames } from "./mp3";
+import { Trace } from "./trace";
 
 // formData() reads the whole body into memory, on Node and on Workers alike, so
 // multipart uploads are capped. Raw bodies are streamed and need no cap.
@@ -17,10 +18,21 @@ const NOT_MP3 =
 const app = new Hono();
 
 app.post("/file-upload", async (c) => {
-  const frameCount = await countFrames(await uploadStream(c.req.raw));
+  // `?trace` adds a step-by-step explanation, used by the upload page. Without it
+  // the response is exactly the specified {"frameCount": n}.
+  const trace = c.req.query("trace") === undefined ? undefined : new Trace();
+  const started = performance.now();
+
+  const upload = await uploadStream(c.req.raw);
+  const frameCount = await countFrames(upload.stream, trace?.record);
+
   // Zero frames almost always means the file is not an MP3. Saying so beats answering 0.
-  if (frameCount === 0) throw new HTTPException(400, { message: NOT_MP3 });
-  return c.json({ frameCount });
+  const status = frameCount > 0 ? 200 : 400;
+  const body = frameCount > 0 ? { frameCount } : { error: NOT_MP3 };
+  if (!trace) return c.json(body, status);
+
+  const steps = trace.steps(upload.via, status, performance.now() - started);
+  return c.json({ ...body, trace: steps }, status);
 });
 
 // Hono does not send 405 on its own. Registered after .post, so only other methods land here.
@@ -44,7 +56,10 @@ app.onError((err, c) => {
  * `curl --data-binary @song.mp3` works even though curl labels it a form.
  * Whether the bytes are really an MP3 is left to the parser.
  */
-async function uploadStream(req: Request): Promise<ReadableStream<Uint8Array>> {
+async function uploadStream(req: Request): Promise<{
+  stream: ReadableStream<Uint8Array>;
+  via: "raw" | "multipart";
+}> {
   const contentType = req.headers.get("content-type") ?? "";
   const contentLength = req.headers.get("content-length");
 
@@ -56,7 +71,7 @@ async function uploadStream(req: Request): Promise<ReadableStream<Uint8Array>> {
     if (!req.body || !hasBody || contentLength === "0") {
       throw new HTTPException(400, { message: NO_FILE });
     }
-    return req.body;
+    return { stream: req.body, via: "raw" };
   }
 
   if (Number(contentLength) > MAX_MULTIPART_BYTES) {
@@ -67,7 +82,7 @@ async function uploadStream(req: Request): Promise<ReadableStream<Uint8Array>> {
   if (!(file instanceof File) || file.size === 0) {
     throw new HTTPException(400, { message: NO_FILE });
   }
-  return file.stream();
+  return { stream: file.stream(), via: "multipart" };
 }
 
 // Cloudflare Workers runs this object directly; server.ts wraps it for Node.
