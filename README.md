@@ -3,6 +3,12 @@
 An HTTP API that counts the audio frames in an MP3 (MPEG-1 Layer III) file.
 The MP3 parsing is written by hand in TypeScript; no audio libraries are used.
 
+Live at **https://mp3.andrewoakeson.com**. The included `samples/sample.mp3` has **6089** frames.
+
+```bash
+curl -F "file=@samples/sample.mp3" https://mp3.andrewoakeson.com/file-upload
+```
+
 ## Run it locally
 
 You need [Node.js](https://nodejs.org) 20 or newer. Nothing else: no accounts, no build step.
@@ -119,3 +125,46 @@ public/
 samples/
   sample.mp3  The sample file provided with the assessment.
 ```
+
+CI runs `npm run check` and `npm test` on every pull request ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+
+## Deployment
+
+The same `src/app.ts` runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/), configured in [wrangler.jsonc](wrangler.jsonc).
+Cloudflare serves `public/` directly, and every other request reaches the Worker.
+
+```bash
+npx wrangler login
+```
+
+```bash
+npm run deploy
+```
+
+To deploy automatically on every merge to `main`, connect the repository once in the Cloudflare dashboard: Workers & Pages, the `mp3-frame-counter` Worker, Settings, Builds.
+
+## Limits
+
+|                | Local (Node)       | Cloudflare                       |
+| -------------- | ------------------ | -------------------------------- |
+| Raw body size  | No limit; streamed | 100 MB on Free and Pro plans     |
+| Multipart size | 100 MB             | 100 MB                           |
+| Over the limit | JSON `413`         | Cloudflare's own HTML `413` page |
+
+CPU time measured on Cloudflare:
+
+| Upload                     | CPU    |
+| -------------------------- | ------ |
+| Sample (1.4 MB), multipart | 14 ms  |
+| Sample (1.4 MB), raw body  | 46 ms  |
+| 50 MB, raw body            | 450 ms |
+| 50 MB, multipart           | 960 ms |
+
+The Workers Free plan stops a request after 10 ms of CPU time with Cloudflare's "Error 1102" page. These numbers need the Paid plan, which allows 30 seconds.
+
+## With more time
+
+- **Tests.** Vitest is wired but there are no tests yet. First: a golden test that the sample counts 6089. Then header edge cases, the same file split into 1-byte chunks, and `app.request()` tests for every status code in the API table.
+- **Streaming multipart.** `formData()` buffers the whole upload. A streaming multipart parser would give form uploads the same flat memory use as raw bodies and remove the 100 MB cap.
+- **Cross-check the Xing count.** When the Xing header has a frame count, report a mismatch with the scanned count instead of silently trusting one.
+- **More formats.** MPEG-2 and 2.5, Layers I and II, and free-format bitrate are out of scope and currently count as 0 frames.
